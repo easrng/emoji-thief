@@ -120,11 +120,12 @@
         </ul>`;
       }
       function InstanceEmojis({ instance }) {
-        const [state, setState] = useState();
+        const [state, setState] = useState(null);
         useEffect(() => {
           let abort = false;
           const controller = new AbortController();
           (async () => {
+            setState(null);
             try {
               const res = await fetch(
                 Object.assign(
