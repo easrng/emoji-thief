@@ -108,7 +108,7 @@
         for (const [name, emojis] of packs) {
           listItems.push(
             html`<li key=${JSON.stringify([instance, name])}>
-              <b>${name}</b>
+              <b>${name}</b>${" "}
               <${StealButton} name=${name} emojis=${emojis} /><${EmojiList}
                 emojis=${emojis}
               />
