@@ -103,11 +103,11 @@
           steal${theftInProgress ? "ing..." : "!"}
         </button>`;
       }
-      function PackList({ packs }) {
+      function PackList({ packs, instance }) {
         const listItems = [];
         for (const [name, emojis] of packs) {
           listItems.push(
-            html`<li>
+            html`<li key=${JSON.stringify([instance, name])}>
               <b>${name}</b>
               <${StealButton} name=${name} emojis=${emojis} /><${EmojiList}
                 emojis=${emojis}
@@ -164,7 +164,7 @@
         return state
           ? state.message
             ? state.message
-            : html`<${PackList} packs=${state.packs} />`
+            : html`<${PackList} packs=${state.packs} instance=${instance} />`
           : html`<progress />`;
       }
       const useHash = () => {
