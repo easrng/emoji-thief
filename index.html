@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>emojithief</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html {
+        color-scheme: light dark;
+        font-family: Roboto, Arial, sans-serif;
+      }
+      .emojis {
+        display: flex;
+        margin: 0;
+        padding: 0;
+        flex-wrap: wrap;
+        grid-gap: 0.25rem;
+        margin: 0.5rem 0 1rem;
+      }
+      .emojis > li {
+        display: block;
+        height: 1.5rem;
+      }
+      .emojis > li img {
+        height: 100%;
+      }
+      .packs {
+        margin: 1rem 0;
+        padding: 0;
+        display: block;
+      }
+      .packs > li {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <img
+        src="https://api.no-bitch.es/no%20javascript%3f"
+        alt="no javascript?"
+      />
+    </noscript>
+    <script type="module">
+      import { render, h } from "https://esm.sh/preact@10.18.1";
+      import {
+        useState,
+        useRef,
+        useEffect,
+        useCallback,
+      } from "https://esm.sh/preact@10.18.1/hooks";
+      import htm from "https://esm.sh/htm@3.1.1";
+      import JSZip from "https://esm.sh/jszip@3.10.1";
+      import pLimit from "https://esm.sh/p-limit@4.0.0";
+      import saveAs from "https://esm.sh/file-saver@2.0.5";
+      window.JSZip = JSZip;
+      const html = htm.bind(h);
+      function EmojiList({ emojis }) {
+        return html`<ul class="emojis">
+          ${emojis.map(
+            (emoji) =>
+              html`<li>
+                <img
+                  src=${emoji.url}
+                  title=${emoji.shortcode}
+                  alt=${emoji.shortcode}
+                  loading="lazy"
+                />
+              </li>`
+          )}
+        </ul>`;
+      }
+      function StealButton({ name, emojis }) {
+        const [theftInProgress, setTheftInProgress] = useState();
+        async function steal() {
+          try {
+            setTheftInProgress(true);
+            const zip = new JSZip();
+            const limit = pLimit(5);
+            await Promise.all(
+              emojis.map(async (emoji) => {
+                const res = await limit(() => fetch(emoji.url));
+                if (!res)
+                  throw new Error("failed to load emoji " + emoji.shortcode);
+                const emojiData = await res.blob();
+                zip.file(
+                  `${emoji.shortcode}.${
+                    res.headers.get("content-type").split("/")[1].split(";")[0]
+                  }`,
+                  emojiData
+                );
+              })
+            );
+            const zipBlob = await zip.generateAsync({ type: "blob" });
+            saveAs(zipBlob, name + ".zip");
+          } catch (e) {
+            alert("error stealing emojis:\n" + e);
+          } finally {
+            setTheftInProgress(false);
+          }
+        }
+        return html`<button disabled=${theftInProgress} onClick=${steal}>
+          steal${theftInProgress ? "ing..." : "!"}
+        </button>`;
+      }
+      function PackList({ packs }) {
+        const listItems = [];
+        for (const [name, emojis] of packs) {
+          listItems.push(
+            html`<li>
+              <b>${name}</b>
+              <${StealButton} name=${name} emojis=${emojis} /><${EmojiList}
+                emojis=${emojis}
+              />
+            </li>`
+          );
+        }
+        return html`<ul class="packs">
+          ${listItems}
+        </ul>`;
+      }
+      function InstanceEmojis({ instance }) {
+        const [state, setState] = useState();
+        useEffect(() => {
+          let abort = false;
+          const controller = new AbortController();
+          (async () => {
+            try {
+              const res = await fetch(
+                Object.assign(
+                  new URL("https://instance/api/v1/custom_emojis"),
+                  {
+                    hostname: instance,
+                  }
+                )
+              );
+              if (!res.ok) throw new Error(await res.text());
+              const emojis = await res.json();
+              const packs = new Map();
+              for (const emoji of emojis) {
+                let category;
+                packs.set(
+                  emoji.category,
+                  (category = packs.get(emoji.category) || [])
+                );
+                category.push(emoji);
+              }
+              setState({ packs });
+            } catch (e) {
+              if (!abort) {
+                console.error(e);
+                setState({
+                  message: html`<p>error loading instance emojis :(</p>`,
+                });
+              }
+            }
+          })();
+          return () => {
+            console.log("aborting");
+            abort = true;
+            if (controller) controller.abort();
+          };
+        }, [instance]);
+        return state
+          ? state.message
+            ? state.message
+            : html`<${PackList} packs=${state.packs} />`
+          : html`<progress />`;
+      }
+      const useHash = () => {
+        const [hash, setHash] = useState(() => location.hash.slice(1));
+        useEffect(() => {
+          const handler = () => setHash(location.hash.slice(1));
+          window.addEventListener("hashchange", handler);
+          return () => {
+            window.removeEventListener("hashchange", handler);
+          };
+        }, []);
+        const updateHash = useCallback(
+          (newHash) => {
+            if (newHash !== hash) location.hash = "#" + newHash;
+          },
+          [hash]
+        );
+        return [hash, updateHash];
+      };
+      function useParams([params, set]) {
+        const p = new URLSearchParams(params);
+        return [
+          Object.fromEntries(p.entries()),
+          useCallback(
+            (o) => {
+              set(new URLSearchParams(o).toString());
+            },
+            [set]
+          ),
+        ];
+      }
+      function App() {
+        const [params, setParams] = useParams(useHash());
+        const instanceInput = useRef();
+        useEffect(() => {
+          instanceInput.current.value = params.instance || "";
+        }, [params.instance]);
+        return html`<h1>emojithief</h1>
+          <form
+            onSubmit=${(e) => {
+              e.preventDefault();
+              setParams({ instance: instanceInput.current.value });
+            }}
+          >
+            <input
+              type="text"
+              placeholder="instance domain"
+              pattern=${/^[^\s\/]+$/.source}
+              required
+              ref=${instanceInput}
+            />${" "}
+            <button>steal emojis ${">:3"}</button>
+          </form>
+          ${params.instance &&
+          html`<${InstanceEmojis} instance=${params.instance} />`}`;
+      }
+      render(html`<${App} />`, document.body);
+    </script>
+  </body>
+</html>
